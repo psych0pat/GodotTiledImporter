@@ -1,9 +1,11 @@
 tool
 
-extends EditorPlugin
+extends WindowDialog
 
-var map_path = ""
 var error_popup
+var file_dialog
+var file_name
+var node_name_line_edit
 var corres_array = []
 
 const FLIPPED_HORIZONTALLY_FLAG = 0x80000000
@@ -12,18 +14,13 @@ const FLIPPED_DIAGONALLY_FLAG   = 0x20000000
 
 var only_used_tiles
 
-func _on_CheckBox_toggled( pressed ): #the checkbox "import only used tiles" is connected with this function through a signal
-	if (pressed):
-		only_used_tiles = true
-		print (only_used_tiles)
-
-	else:
-		only_used_tiles = false
-		print (only_used_tiles)
 
 func _ready():
-
-	error_popup = get_node("ErrorPopup")
+	error_popup = get_node("ImportButton/ErrorPopup")
+	file_dialog = get_node("SelectFileButton/FileDialog")
+	file_name = get_node("FileName")
+	node_name_line_edit = get_node("NodeNameLineEdit")
+	popup_centered()
 
 func createTileset(var data, var cell_size, var onlyused, var layers): # data = tileset_data = map_data[tilesets]
 	var ts = TileSet.new()
@@ -50,14 +47,10 @@ func createTileset(var data, var cell_size, var onlyused, var layers): # data = 
 					i += 1
 
 	for t in data:
-		var path = map_path.get_base_dir() + "/" + t["image"]
-		#var file_name = t["image"]
-		#var path = map_path.get_base_dir() + "/" + file_name
+		var path = file_name.get_text().get_base_dir() + "/" + t["image"]
 		var file = File.new()
 		if (!file.file_exists(path)):
-			print("couldn't find the tileset: " + path)
-			error_popup.set_text("couldn't find the tileset: " + path)
-			error_popup.popup()
+			showPopup("couldn't find the tileset: " + path)
 			return false
 		var texture = load(path)
 		texture.set_flags(0)
@@ -149,31 +142,31 @@ func createTileset(var data, var cell_size, var onlyused, var layers): # data = 
 
 	return ts
 
-func _on_Button_pressed():
+func showPopup(text):
+	print(text)
+	error_popup.get_node('Label').set_text(text)
+	error_popup.popup_centered()
+
+func _on_ImportButton_pressed():
 	var root_node = get_tree().get_edited_scene_root()
 	if root_node == null:
-		print("No root node found. Please add one before trying to import a tiled map")
-		error_popup.set_text("No root node found. Please add one before trying to import a tiled map")
-		error_popup.popup()
-		return
+		return showPopup("No root node found. Please add one before trying to import a tiled map")
 	var json = File.new()
-	if (json.file_exists(map_path)):
-		json.open(map_path, 1)
+	if (json.file_exists(file_name.get_text())):
+		json.open(file_name.get_text(), 1)
 	else:
-		print("The map file " + map_path +" seems to not exist.")
-		error_popup.set_text("The map file " + map_path +" seems to not exist.")
-		error_popup.popup()
-		return false
+		return showPopup("The map file " + file_name.get_text() + " seems to not exist.")
 	var map_data = {}
 	var err = map_data.parse_json(json.get_as_text())
-	if (err!=OK):
-		print("Error parsing the map file. Please make sure it's in a valid format. Currently only .json is supported")
-		error_popup.set_text("Error parsing the map file. Please make sure it's in a valid format. Currently only .json is supported")
-		error_popup.popup()
-		return
+	if (err != OK):
+		return showPopup("Error parsing the map file. Please make sure it's in a valid format. Currently only .json is supported")
 
 	var tilemap_root = Node2D.new()
-	tilemap_root.set_name("Tile Map")
+	print(node_name_line_edit.get_text())
+	if !node_name_line_edit.get_text().empty():
+		tilemap_root.set_name(node_name_line_edit.get_text())
+	else:
+		tilemap_root.set_name("Tile map")
 
 	var layers = map_data["layers"]
 
@@ -193,6 +186,7 @@ func _on_Button_pressed():
 		mode = TileMap.MODE_ISOMETRIC
 
 	for l in layers:
+		print(l)
 		var layer_map = TileMap.new()
 		tilemap_root.add_child(layer_map)
 		layer_map.set_owner(root_node)
@@ -229,9 +223,29 @@ func _on_Button_pressed():
 					layer_map.set_cell(x, y, gid, flipped_horizontally, flipped_vertically)
 				i += 1
 
-	error_popup.set_text("Succesfully imported the map")
-	error_popup.popup()
-	return
+	return showPopup("Succesfully imported the map")
 
 func _on_FileDialog_file_selected( path ):
-	map_path = path
+	file_name.set_text(path)
+
+func _on_SelectFileButton_pressed():
+	file_dialog.popup_centered()
+
+# the checkbox "import only used tiles" is connected with this function through a signal
+func _on_UsedTilesCheckBox_toggled( pressed ):
+	if (pressed):
+		only_used_tiles = true
+	else:
+		only_used_tiles = false
+
+func _on_ExternalCheckBox_toggled( pressed ):
+	if pressed:
+		file_dialog.set_access(2) # File system
+	else:
+		file_dialog.set_access(0) # Resources
+
+func _on_CloseButton_pressed():
+	error_popup.set_hidden(true)
+
+func _on_CancelButton_pressed():
+	queue_free()
